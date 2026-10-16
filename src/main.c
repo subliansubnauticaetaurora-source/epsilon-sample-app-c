@@ -1,26 +1,25 @@
-// Jeu de survie - NumWorks (app externe .nwa)
-// A placer dans src/main.c du depot epsilon-sample-app-c (avec eadk.h)
+// Guide de survie - NumWorks (app externe .nwa)
+// A placer dans src/main.c, avec survie_data.h dans le meme dossier src/
 
 #include "eadk.h"
-#include <stdint.h>
+#include "survie_data.h"
 #include <stdbool.h>
 
-const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "Survie";
+const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "Guide";
 const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level"))) = 0;
 
 #define RGB(r,g,b) ((eadk_color_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
-#define SKY     RGB(110,180,255)
-#define GREEN   RGB(40,140,60)
 #define WHITE   RGB(255,255,255)
 #define BLACK   RGB(0,0,0)
 #define GRAY    RGB(110,110,110)
 #define DARK    RGB(12,16,30)
+#define TAB     RGB(60,60,75)
+#define SELECT  RGB(40,60,110)
 #define RED     RGB(220,40,40)
-#define ORANGE  RGB(255,150,20)
 #define YELLOW  RGB(255,230,60)
 #define LIME    RGB(120,230,120)
 
-/* ---------- Outils d'affichage ---------- */
+/* ---------- Affichage ---------- */
 
 static void fill(int x, int y, int w, int h, eadk_color_t c) {
   eadk_rect_t r = {x, y, w, h};
@@ -32,7 +31,6 @@ static void text(const char *s, int x, int y, bool big, eadk_color_t c, eadk_col
   eadk_display_draw_string(s, p, big, c, bg);
 }
 
-// Ecrit un paragraphe avec retour a la ligne automatique
 static int para(const char *s, int x, int y, int max, eadk_color_t c, eadk_color_t bg) {
   char line[48];
   int n = 0;
@@ -58,233 +56,216 @@ static int para(const char *s, int x, int y, int max, eadk_color_t c, eadk_color
   return y;
 }
 
-static void hearts(int hp) {
-  for (int i = 0; i < 3; i++) fill(256 + i * 18, 8, 14, 14, i < hp ? RED : GRAY);
-}
+/* ---------- Clavier ---------- */
 
-/* ---------- Entrees clavier ---------- */
-
-// ok_only = true : attend OK/EXE (retourne 0)
-// ok_only = false : attend 1, 2 ou 3 (retourne 1..3)
-static int wait_choice(bool ok_only) {
+// 0-9 : chiffres, 10 : OK, 11 : retour/effacer, 12 haut, 13 bas, 14 gauche, 15 droite
+static int get_key(void) {
   while (eadk_keyboard_scan()) eadk_timing_msleep(20);
   while (1) {
     eadk_keyboard_state_t k = eadk_keyboard_scan();
-    if (ok_only) {
-      if (eadk_keyboard_key_down(k, eadk_key_ok) || eadk_keyboard_key_down(k, eadk_key_exe)) return 0;
-    } else {
-      if (eadk_keyboard_key_down(k, eadk_key_one)) return 1;
-      if (eadk_keyboard_key_down(k, eadk_key_two)) return 2;
-      if (eadk_keyboard_key_down(k, eadk_key_three)) return 3;
-    }
+#define K(x) eadk_keyboard_key_down(k, eadk_key_##x)
+    if (K(zero)) return 0;
+    if (K(one)) return 1;
+    if (K(two)) return 2;
+    if (K(three)) return 3;
+    if (K(four)) return 4;
+    if (K(five)) return 5;
+    if (K(six)) return 6;
+    if (K(seven)) return 7;
+    if (K(eight)) return 8;
+    if (K(nine)) return 9;
+    if (K(ok) || K(exe)) return 10;
+    if (K(back) || K(backspace)) return 11;
+    if (K(up)) return 12;
+    if (K(down)) return 13;
+    if (K(left)) return 14;
+    if (K(right)) return 15;
+#undef K
     eadk_timing_msleep(20);
   }
 }
 
-static void page(const char *s) {
-  fill(0, 0, 320, 240, BLACK);
-  para(s, 14, 40, 40, WHITE, BLACK);
-  text("[OK] continuer", 100, 214, false, GRAY, BLACK);
-  wait_choice(true);
-}
+/* ---------- Icones ---------- */
 
-/* ---------- Cinematique 2D ---------- */
-
-static void intro(void) {
-  page("Vol 714, 11h42. Tu es assis dans l'avion quand une violente turbulence secoue l'appareil. Les moteurs s'eteignent un par un.");
-
-  int x = 0, y = 0;
-  for (int f = 0; f < 59; f++) {
-    x = 10 + f * 4;
-    y = 10 + f * 3;
-    fill(0, 0, 320, 190, SKY);
-    fill(0, 190, 320, 50, GREEN);
-    // montagnes
-    fill(180, 150, 60, 40, GRAY);
-    fill(195, 135, 30, 15, GRAY);
-    fill(260, 160, 50, 30, GRAY);
-    // traine de fumee
-    for (int t = 1; t <= 7; t++) fill(x - t * 8, y - t * 6, 9, 9, (t % 2) ? GRAY : DARK);
-    // avion
-    fill(x, y, 38, 8, WHITE);
-    fill(x + 10, y - 7, 12, 7, RGB(200,200,200));
-    fill(x + 10, y + 8, 12, 5, RGB(200,200,200));
-    fill(x - 4, y - 9, 6, 9, RED);
-    fill(x + 30, y + 1, 6, 4, SKY);
-    // flammes
-    fill(x - 8, y + 2, 7, 5, ORANGE);
-    fill(x - 12, y + 3, 5, 3, YELLOW);
-    eadk_display_wait_for_vblank();
-    eadk_timing_msleep(25);
+static eadk_color_t pal(char ch) {
+  switch (ch) {
+    case 'G': return RGB(60, 170, 60);
+    case 'g': return RGB(30, 110, 40);
+    case 'b': return RGB(130, 85, 40);
+    case 'B': return RGB(90, 55, 30);
+    case 't': return RGB(210, 180, 110);
+    case 'p': return RGB(110, 40, 120);
+    case 'w': return RGB(230, 230, 230);
+    case 'y': return RGB(255, 220, 50);
   }
-
-  // impact + explosion
-  for (int r = 1; r <= 12; r++) {
-    fill(x + 18 - r * 8, 190 - r * 6, r * 16, r * 6, r % 2 ? ORANGE : RED);
-    fill(x + 18 - r * 4, 190 - r * 3, r * 8, r * 3, YELLOW);
-    eadk_timing_msleep(40);
-  }
-  fill(0, 0, 320, 240, WHITE);
-  eadk_timing_msleep(150);
-  fill(0, 0, 320, 240, BLACK);
-  eadk_timing_msleep(500);
-
-  page("Un grand silence. Puis des flammes, de la fumee, des debris partout... Tu es peut-etre le seul survivant. Ta survie ne depend plus que de tes choix.");
+  return DARK;
 }
 
-/* ---------- Histoire ---------- */
-
-typedef struct {
-  const char *txt;
-  const char *opt[3];
-  const char *res[3];
-  int8_t dmg[3];
-} Node;
-
-#define N 8
-
-static const Node story[N] = {
-  { "Tu reprends connaissance dans l'epave. Du feu, de la fumee, des cris au loin. Que fais-tu ?",
-    {"Fuir loin de l'epave", "Fouiller la cabine en flammes", "Rester assis et attendre"},
-    {"Tu t'eloignes juste avant une explosion. Ouf !",
-     "Tu trouves un sac mais tu te brules les bras.",
-     "La fumee t'intoxique. Tu t'evanouis un moment."},
-    {0, 1, 1} },
-
-  { "La nuit tombe. Il fait de plus en plus froid et tu entends des bruits dans la foret.",
-    {"Dormir au milieu de l'epave", "Allumer un feu avec des debris", "Marcher dans le noir"},
-    {"Tu grelottes toute la nuit. Tu es epuise.",
-     "Le feu te rechauffe et tient les betes a distance.",
-     "Tu tombes dans un ravin. Aie !"},
-    {1, 0, 1} },
-
-  { "Le soleil se leve. Tu as tres soif, ta gorge est seche.",
-    {"Boire l'eau d'une flaque", "Manger des baies rouges inconnues", "Chercher une source d'eau"},
-    {"L'eau est sale. Tu as mal au ventre.",
-     "Elles sont toxiques ! Tu vomis violemment.",
-     "Tu entends un ruisseau et tu le trouves."},
-    {1, 2, 0} },
-
-  { "Tu trouves une riviere. L'eau semble claire mais tu n'as aucun recipient.",
-    {"Faire bouillir l'eau dans une boite", "Boire directement a la riviere", "Suivre la riviere vers l'aval"},
-    {"Eau propre. Tu te sens beaucoup mieux.",
-     "Un parasite... Tu as de la fievre.",
-     "Les rivieres menent souvent aux villages. Bon reflexe."},
-    {0, 1, 0} },
-
-  { "Au loin, un helicoptere survole la foret. Il ne t'a pas vu.",
-    {"Courir en criant", "Monter sur une colline degagee", "Faire un feu a fumee epaisse"},
-    {"Tu t'epuises et tu te tords la cheville.",
-     "De la, tu es beaucoup plus visible.",
-     "La fumee monte haut dans le ciel. Bon signal."},
-    {1, 0, 0} },
-
-  { "Un violent orage eclate. La pluie et la foudre s'abattent sur la foret.",
-    {"Te mettre sous le plus grand arbre", "Continuer a marcher sous la pluie", "T'abriter sous un rocher"},
-    {"La foudre frappe pres de toi ! Tu es sonne.",
-     "Tu es trempe et glace.",
-     "Tu restes au sec et en securite."},
-    {2, 1, 0} },
-
-  { "Un grognement. Un loup rode a quelques metres, les yeux fixes sur toi.",
-    {"Brandir une torche enflammee", "Courir de toutes tes forces", "Grimper dans un arbre"},
-    {"Le loup recule et s'enfuit.",
-     "Le loup te rattrape et te mord le bras.",
-     "Hors de portee, tu attends. Le loup part."},
-    {0, 2, 0} },
-
-  { "Un helicoptere de secours approche enfin. Il faut absolument te faire reperer !",
-    {"Rester cache sous les arbres", "Ecrire SOS au sol avec des pierres", "Signaler avec un morceau de metal"},
-    {"Ils ne te voient pas... il repasse de justesse.",
-     "Le pilote lit ton message. Il se pose !",
-     "Le reflet attire les secours !"},
-    {1, 0, 0} },
-};
-
-/* ---------- Ecrans de jeu ---------- */
-
-static void draw_node(const Node *n, int i, int hp) {
-  fill(0, 0, 320, 240, DARK);
-  char d[] = "Jour X";
-  d[5] = '1' + i / 2;
-  text(d, 10, 8, false, YELLOW, DARK);
-  hearts(hp);
-  para(n->txt, 10, 36, 42, WHITE, DARK);
-  for (int k = 0; k < 3; k++) {
-    char b[48];
-    int p = 0;
-    b[p++] = '1' + k;
-    b[p++] = '.';
-    b[p++] = ' ';
-    for (const char *s = n->opt[k]; *s && p < 44; s++) b[p++] = *s;
-    b[p] = 0;
-    text(b, 10, 140 + k * 28, false, LIME, DARK);
-  }
-}
-
-static void show_result(const char *res, int dmg, int hp) {
-  fill(0, 0, 320, 240, dmg ? RGB(40,10,10) : RGB(10,35,15));
-  eadk_color_t bg = dmg ? RGB(40,10,10) : RGB(10,35,15);
-  hearts(hp > 0 ? hp : 0);
-  para(res, 10, 50, 42, WHITE, bg);
-  if (dmg) {
-    char b[] = "Tu perds 1 vie !";
-    b[9] = '0' + dmg;
-    text(b, 10, 130, true, RED, bg);
-  } else {
-    text("Bon choix !", 10, 130, true, LIME, bg);
-  }
-  text("[OK] continuer", 100, 214, false, GRAY, bg);
-  wait_choice(true);
-}
-
-static void death(int i) {
-  fill(0, 0, 320, 240, RGB(60,0,0));
-  text("TU ES MORT", 90, 60, true, RED, RGB(60,0,0));
-  char b[] = "Tu as tenu jusqu'au jour X";
-  b[25] = '1' + i / 2;
-  text(b, 40, 110, false, WHITE, RGB(60,0,0));
-  text("Trop de mauvais choix...", 60, 135, false, WHITE, RGB(60,0,0));
-  text("[OK] rejouer", 110, 214, false, GRAY, RGB(60,0,0));
-  wait_choice(true);
-}
-
-static void win(int hp) {
-  eadk_color_t bg = RGB(10,60,30);
-  fill(0, 0, 320, 240, bg);
-  text("SAUVE !", 110, 50, true, YELLOW, bg);
-  para("Les secours t'ont retrouve. Tu es le seul survivant du vol 714.", 14, 100, 40, WHITE, bg);
-  char b[] = "Vies restantes : X";
-  b[17] = '0' + hp;
-  text(b, 14, 160, false, LIME, bg);
-  text("[OK] rejouer", 110, 214, false, GRAY, bg);
-  wait_choice(true);
-}
-
-static void play(void) {
-  int hp = 3;
-  for (int i = 0; i < N; i++) {
-    const Node *n = &story[i];
-    draw_node(n, i, hp);
-    int c = wait_choice(false) - 1;
-    hp -= n->dmg[c];
-    show_result(n->res[c], n->dmg[c], hp);
-    if (hp <= 0) {
-      death(i);
-      return;
+static void draw_icone(int id, int ox, int oy, int sc) {
+  fill(ox - 2, oy - 2, 16 * sc + 4, 16 * sc + 4, GRAY);
+  fill(ox, oy, 16 * sc, 16 * sc, RGB(25, 35, 55));
+  for (int r = 0; r < 16; r++) {
+    for (int q = 0; q < 16; q++) {
+      char ch = icone_pixels[id][r][q];
+      if (ch != '.') fill(ox + q * sc, oy + r * sc, sc, sc, pal(ch));
     }
   }
-  win(hp);
 }
+
+/* ---------- Ecrans ---------- */
+
+static void draw_dept(int len, int val) {
+  char b[4] = "__";
+  if (len == 1) {
+    b[0] = '0' + val;
+  } else if (len == 2) {
+    b[0] = '0' + val / 10;
+    b[1] = '0' + val % 10;
+  }
+  b[2] = 0;
+
+  fill(0, 0, 320, 240, DARK);
+  text("GUIDE DE SURVIE", 80, 16, true, YELLOW, DARK);
+  text("Numero du departement :", 10, 70, false, WHITE, DARK);
+  text(b, 135, 98, true, LIME, DARK);
+  if (len == 2) {
+    if (val >= 1 && val <= 95) {
+      text("Zone :", 10, 150, false, WHITE, DARK);
+      text(zone_noms[dept_zone[val]], 70, 150, false, YELLOW, DARK);
+    } else {
+      text("Numero invalide (01 a 95)", 10, 150, false, RED, DARK);
+    }
+  }
+  text("Ex : 05 ou 29. Corse = 20", 10, 185, false, GRAY, DARK);
+  text("[OK] valider    [Retour] effacer", 20, 214, false, GRAY, DARK);
+}
+
+static void draw_menu(int dept, int sel) {
+  char h[] = "Departement XX";
+  h[12] = '0' + dept / 10;
+  h[13] = '0' + dept % 10;
+  fill(0, 0, 320, 240, DARK);
+  text(h, 10, 8, false, YELLOW, DARK);
+  text(zone_noms[dept_zone[dept]], 10, 26, false, WHITE, DARK);
+  for (int i = 0; i < 6; i++) {
+    int y = 56 + i * 26;
+    eadk_color_t bg = (i == sel) ? SELECT : DARK;
+    fill(8, y - 3, 304, 22, bg);
+    text(i < 5 ? habitat_noms[i] : "Regles de base", 16, y, false,
+         (i == sel) ? YELLOW : WHITE, bg);
+  }
+  text("Haut/Bas choisir  [OK] ouvrir", 30, 218, false, GRAY, DARK);
+}
+
+static void draw_fiche(int dept, int hab, int sec, int psel) {
+  const Fiche *f = survie_fiche(dept, (Habitat)hab);
+  char d[] = "Dept XX";
+  d[5] = '0' + dept / 10;
+  d[6] = '0' + dept % 10;
+
+  fill(0, 0, 320, 240, DARK);
+  text(habitat_noms[hab], 10, 8, true, YELLOW, DARK);
+  text(d, 250, 12, false, GRAY, DARK);
+  if (hab != HAB_MONTAGNE) text(zone_noms[dept_zone[dept]], 10, 34, false, WHITE, DARK);
+
+  if (f == NULL) {
+    para("Fiche indisponible.", 10, 80, 40, WHITE, DARK);
+  } else if (f->corde[0] == '-' && f->corde[1] == 0) {
+    para(f->astuce, 10, 80, 40, WHITE, DARK);
+  } else {
+    const char *tabs[4] = {"Corde", "Manger", "Eau", "Astuce"};
+    const char *body[4] = {f->corde, f->manger, f->eau, f->astuce};
+    for (int t = 0; t < 4; t++) {
+      int x = 6 + t * 78;
+      eadk_color_t bg = (t == sec) ? YELLOW : TAB;
+      fill(x, 54, 74, 20, bg);
+      text(tabs[t], x + 8, 58, false, (t == sec) ? BLACK : WHITE, bg);
+    }
+    const ListePlantes *lp = (sec == 0) ? survie_cordes(dept, (Habitat)hab) : NULL;
+    if (lp) {
+      for (int i = 0; i < lp->n; i++) {
+        int y = 82 + i * 20;
+        eadk_color_t bg = (i == psel) ? SELECT : DARK;
+        fill(8, y - 2, 196, 18, bg);
+        text(lp->p[i]->nom, 14, y, false, (i == psel) ? YELLOW : WHITE, bg);
+      }
+      draw_icone(lp->p[psel]->icone, 220, 80, 5);
+      para(lp->p[psel]->methode, 10, 168, 40, WHITE, DARK);
+    } else {
+      para(body[sec], 10, 88, 40, WHITE, DARK);
+    }
+  }
+  if (sec == 0 && survie_cordes(dept, (Habitat)hab))
+    text("Haut/Bas plante  Gauche/Droite onglet", 8, 224, false, GRAY, DARK);
+  else
+    text("Gauche/Droite onglet  [Retour] menu", 8, 224, false, GRAY, DARK);
+}
+
+static void draw_regle(int r) {
+  char n[] = "Regle X/6";
+  n[6] = '1' + r;
+  fill(0, 0, 320, 240, DARK);
+  text("REGLES DE BASE", 80, 12, true, YELLOW, DARK);
+  text(n, 10, 50, false, LIME, DARK);
+  para(survie_regles[r], 10, 80, 40, WHITE, DARK);
+  text("Gauche/Droite changer  [Retour] menu", 8, 218, false, GRAY, DARK);
+}
+
+/* ---------- Programme ---------- */
 
 int main(int argc, char *argv[]) {
-  bool first = true;
+  int screen = 0;  // 0 departement, 1 menu, 2 fiche, 3 regles
+  int len = 0, val = 0;
+  int dept = 0, sel = 0, hab = 0, sec = 0, ridx = 0, psel = 0;
+
   while (1) {
-    if (first) {
-      intro();
-      first = false;
+    if (screen == 0) draw_dept(len, val);
+    else if (screen == 1) draw_menu(dept, sel);
+    else if (screen == 2) draw_fiche(dept, hab, sec, psel);
+    else draw_regle(ridx);
+
+    int k = get_key();
+
+    if (screen == 0) {
+      if (k <= 9 && len < 2) {
+        val = val * 10 + k;
+        len++;
+      } else if (k == 11 && len > 0) {
+        val /= 10;
+        len--;
+      } else if (k == 10 && len == 2 && val >= 1 && val <= 95) {
+        dept = val;
+        sel = 0;
+        screen = 1;
+      }
+    } else if (screen == 1) {
+      if (k == 12) sel = (sel + 5) % 6;
+      else if (k == 13) sel = (sel + 1) % 6;
+      else if (k == 10) {
+        if (sel == 5) {
+          ridx = 0;
+          screen = 3;
+        } else {
+          hab = sel;
+          sec = 0;
+          psel = 0;
+          screen = 2;
+        }
+      } else if (k == 11) {
+        screen = 0;
+      }
+    } else if (screen == 2) {
+      const ListePlantes *lp = (sec == 0) ? survie_cordes(dept, (Habitat)hab) : NULL;
+      if (k == 12 && lp) psel = (psel + lp->n - 1) % lp->n;
+      else if (k == 13 && lp) psel = (psel + 1) % lp->n;
+      else if (k == 14) { sec = (sec + 3) % 4; psel = 0; }
+      else if (k == 15 || k == 10) { sec = (sec + 1) % 4; psel = 0; }
+      else if (k == 11) screen = 1;
+    } else {
+      if (k == 14) ridx = (ridx + NB_REGLES - 1) % NB_REGLES;
+      else if (k == 15 || k == 10) ridx = (ridx + 1) % NB_REGLES;
+      else if (k == 11) screen = 1;
     }
-    play();
   }
   return 0;
 }
