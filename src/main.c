@@ -5,8 +5,8 @@
 #include "survie_data.h"
 #include <stdbool.h>
 
-const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "Guide";
-const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level"))) = 0;
+const char eadk_app_name[] __attribute__((section(".eadk_app_name"))) = "Guide";
+const uint32_t eadk_api_level __attribute__((section(".eadk_api_level"))) = 0;
 
 #define RGB(r,g,b) ((eadk_color_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
 #define WHITE   RGB(255,255,255)
