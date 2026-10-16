@@ -1,271 +1,278 @@
-// Guide de survie - NumWorks (app externe .nwa)
-// A placer dans src/main.c, avec survie_data.h dans le meme dossier src/
+// Bibliotheque de survie - France metropolitaine
+// Principe : numero de departement -> zone climatique -> fiche selon le milieu.
+// Les plantes ne suivent pas les limites administratives : les zones sont
+// des approximations. Textes en ASCII (pas d'accents) pour la police NumWorks.
+//
+// Utilisation :
+//   const Fiche *f = survie_fiche(29, HAB_FORET);   // 29 = Finistere
+//   f->corde, f->manger, f->eau, f->astuce
+//
+// Corse : utiliser le numero 20. Departements 01 a 95.
 
-#include "eadk.h"
-#include "survie_data.h"
-#include <stdbool.h>
+#ifndef SURVIE_DATA_H
+#define SURVIE_DATA_H
 
-const char eadk_app_name[] __attribute__((section(".rodata.eadk_app_name"))) = "Guide";
-const uint32_t eadk_api_level __attribute__((section(".rodata.eadk_api_level"))) = 0;
+#include <stdint.h>
+#include <stddef.h>
 
-#define RGB(r,g,b) ((eadk_color_t)((((r)&0xF8)<<8)|(((g)&0xFC)<<3)|((b)>>3)))
-#define WHITE   RGB(255,255,255)
-#define BLACK   RGB(0,0,0)
-#define GRAY    RGB(110,110,110)
-#define DARK    RGB(12,16,30)
-#define TAB     RGB(60,60,75)
-#define SELECT  RGB(40,60,110)
-#define RED     RGB(220,40,40)
-#define YELLOW  RGB(255,230,60)
-#define LIME    RGB(120,230,120)
+typedef enum {
+  ZONE_OCEANIQUE = 0,
+  ZONE_CONTINENTAL = 1,
+  ZONE_MEDITERRANEEN = 2
+} Zone;
 
-/* ---------- Affichage ---------- */
+typedef enum {
+  HAB_FORET = 0,
+  HAB_LITTORAL,
+  HAB_PLAINE,
+  HAB_EAU_DOUCE,
+  HAB_MONTAGNE,
+  HAB_COUNT
+} Habitat;
 
-static void fill(int x, int y, int w, int h, eadk_color_t c) {
-  eadk_rect_t r = {x, y, w, h};
-  eadk_display_push_rect_uniform(r, c);
+typedef struct {
+  const char *corde;
+  const char *manger;
+  const char *eau;
+  const char *astuce;
+} Fiche;
+
+// Icones disponibles (dessins pixel art 16x16 plus bas dans ce fichier)
+typedef enum {
+  ICO_TILLEUL = 0, ICO_ORTIE, ICO_RONCE, ICO_OSIER,
+  ICO_JONC, ICO_GENET, ICO_RACINE, ICO_CORDE, ICO_COUNT
+} Icone;
+
+typedef struct {
+  const char *nom;
+  uint8_t icone;
+  const char *methode;
+} Plante;
+
+typedef struct {
+  const Plante *const *p;
+  uint8_t n;
+} ListePlantes;
+
+static const char *const zone_noms[3] = {
+  "Oceanique", "Continental", "Mediterraneen"
+};
+
+static const char *const habitat_noms[HAB_COUNT] = {
+  "Foret", "Mer / plage", "Plaine / haies", "Riviere / lac", "Montagne"
+};
+
+// Index = numero de departement (0 inutilise). 0 = oceanique,
+// 1 = continental, 2 = mediterraneen. Les zones de montagne sont gerees
+// par le milieu HAB_MONTAGNE, pas par la zone.
+static const uint8_t dept_zone[96] = {
+  1, 1,1,1,2,1,2,2,1,1,   // 00-09
+  1,2,1,2,0,1,0,0,1,1,    // 10-19
+  2,1,0,1,0,1,2,0,1,0,    // 20-29 (20 = Corse)
+  2,1,1,0,2,0,1,1,1,1,    // 30-39
+  0,1,1,1,0,1,1,1,1,0,    // 40-49
+  0,1,1,0,1,1,0,1,1,0,    // 50-59
+  1,0,0,1,0,1,2,1,1,1,    // 60-69
+  1,1,0,1,1,1,0,1,1,0,    // 70-79
+  0,1,1,2,2,0,0,1,1,1,    // 80-89
+  1,1,1,1,1,1             // 90-95
+};
+
+static const Fiche fiche_pas_de_mer = {
+  "-", "-", "-", "Pas de littoral dans cette zone : voir Riviere / lac."
+};
+
+// ---------- Zone oceanique (Bretagne, Normandie, Nord, Atlantique) ----------
+static const Fiche fiches_oceanique[4] = {
+  // Foret
+  { "Liber de tilleul, tiges d'ortie seches, ronces effeuillees, osier fin.",
+    "Chataignes et noisettes cuites, glands (a lessiver), mures, ortie cuite.",
+    "Ruisseaux : filtrer au tissu puis bouillir. Rosee recoltee au tissu.",
+    "Abri de branches adosse a un arbre, sol isole par des feuilles seches." },
+  // Mer / plage
+  { "Peu de cordage sur la plage : cordes et filets echoues, ortie et ronces en haut de plage.",
+    "Laitue de mer, dulse, nori (rincer). Coquillages : risque de toxines, seulement en dernier recours et cuits.",
+    "Eau de mer NON potable. Chercher ruisseau ou source en arriere du littoral : filtrer + bouillir.",
+    "Surveiller les marees, rester au-dessus de la laisse de haute mer. Bois flotte sec pour le feu." },
+  // Plaine / haies
+  { "Ortie (fibres des tiges), ronces, osier des haies, lierre pour liens courts.",
+    "Pissenlit, plantain, ortie cuite, mures, noisettes. Eviter les bords de champs traites.",
+    "Mares et fosses douteux : filtrer + bouillir. Pluie recuperee sur une bache.",
+    "Les haies coupent le vent. Ne jamais manger d'ombelles : la cigue ressemble a la carotte." },
+  // Riviere / lac
+  { "Joncs et roseaux tresses, saule et osier des berges.",
+    "Poissons a la ligne, racines de typha cuites. Cresson sauvage seulement bien cuit.",
+    "Eau courante et claire plutot que stagnante : filtrer + bouillir 1 min (3 min en altitude).",
+    "Dormir loin du bord (crues, moustiques). Suivre le cours d'eau mene souvent a un village." }
+};
+
+// ---------- Zone continentale (centre, est, region parisienne, sud-ouest) ----------
+static const Fiche fiches_continental[4] = {
+  // Foret
+  { "Liber de tilleul, tiges d'ortie, racines fines d'epicea, saule.",
+    "Noisettes, chataignes cuites, mures, framboises, myrtilles. Pissenlit et plantain en lisiere.",
+    "Sources et ruisseaux : filtrer + bouillir. En hiver, fondre la neige (ne pas la manger).",
+    "Abri en appentis (branches inclinees). Bois mort encore sur l'arbre = plus sec." },
+  // Mer / plage (inexistant)
+  { "-", "-", "-", "Pas de littoral dans cette zone : voir Riviere / lac." },
+  // Plaine / haies
+  { "Ortie, ronces, saule des haies.",
+    "Pissenlit, plantain, ortie cuite, mures, noix et noisettes.",
+    "Fosses et mares : filtrer + bouillir. Rosee et pluie avec un tissu ou une bache.",
+    "Rester pres des chemins et se rendre visible : grands signaux au sol, miroir, feu fumeux." },
+  // Riviere / lac
+  { "Joncs, roseaux, saule des berges.",
+    "Poissons a la ligne, racines de typha cuites, mures sur les berges.",
+    "Eau courante claire : filtrer + bouillir 1 min (3 min en altitude).",
+    "Camper un peu en hauteur (crues). Suivre l'aval d'une riviere mene souvent a des habitations." }
+};
+
+// ---------- Zone mediterraneenne (Provence, Languedoc, Corse) ----------
+static const Fiche fiches_mediterraneen[4] = {
+  // Foret / maquis
+  { "Genet d'Espagne (tiges souples), ronces, racines fines de pin.",
+    "Glands de chene vert (a lessiver), arbouses, figues, mures, pignons de pin parasol.",
+    "Rare l'ete : lits de ruisseaux a sec (creuser), rosee, pluie. Filtrer + bouillir.",
+    "Se reposer a l'ombre aux heures chaudes, marcher tot ou tard. Pas de feu en ete : risque d'incendie." },
+  // Mer / plage
+  { "Joncs et roseaux pres des etangs, genet d'Espagne en arriere-plage.",
+    "Figues de Barbarie (retirer les epines fines en les roulant dans le sable), algues rincees. Coquillages : risque.",
+    "Eau de mer NON potable. Peu de sources : fonds de vallons, puits, fontaines. Filtrer + bouillir.",
+    "Soleil fort : couvrir tete et peau, faire de l'ombre avec une bache. Vent fort possible (mistral)." },
+  // Plaine / garrigue
+  { "Genet d'Espagne, ronces.",
+    "Figues, mures. Romarin et thym en infusion (aromates, pas un repas).",
+    "Rosee, pluie sur bache, lits de ruisseaux a sec. Filtrer + bouillir.",
+    "Eviter de marcher en plein soleil (10h-17h). Reperer les points hauts pour s'orienter." },
+  // Riviere / lac
+  { "Roseaux et joncs, saule des berges.",
+    "Poissons a la ligne, racines de typha cuites, mures le long des berges.",
+    "Eau courante claire : filtrer + bouillir. Mefiance avec les eaux stagnantes l'ete.",
+    "L'eau est un repere : rester proche et visible. Ombre indispensable en journee." }
+};
+
+// ---------- Montagne (toutes zones : Alpes, Pyrenees, Jura, Vosges, Massif central) ----------
+static const Fiche fiche_montagne = {
+  "Racines fines d'epicea ou de pin, liber de tilleul en bas de vallee, genets.",
+  "Myrtilles, framboises sauvages, noisettes, pissenlit. Peu de nourriture : economiser son energie.",
+  "Neige et glace : les FONDRE avant de boire. Ruisseaux : filtrer + bouillir 3 min.",
+  "Hypothermie = danger n.1 : abri du vent, rester sec. Descendre par les vallees, pas de nuit." };
+
+// ---------- Regles generales ----------
+#define NB_REGLES 6
+static const char *const survie_regles[NB_REGLES] = {
+  "Priorites : securite et abri, eau, signal et feu, puis nourriture.",
+  "Regle des 3 : 3 h sans abri par grand froid, 3 jours sans eau, 3 semaines sans manger.",
+  "Ne jamais manger : champignons, baies inconnues, ombelles (cigue), if.",
+  "Toujours filtrer puis bouillir l'eau de surface (1 min, 3 min en altitude).",
+  "Rester pres de l'epave ou d'un point visible : on retrouve plus facilement.",
+  "Ces fiches sont un jeu : en vrai, ne mange que ce que tu identifies a coup sur."
+};
+
+// ---------- Icones pixel art 16x16 ----------
+// Lettres : G vert, g vert fonce, b brun, B brun fonce, t beige, p violet,
+// w blanc, y jaune, '.' = transparent
+static const char *const icone_pixels[ICO_COUNT][16] = {
+  // ICO_TILLEUL
+  { "................", "..GGG......GGG..", ".GGGGG....GGGGG.", "GGGGGGG..GGGGGGG",
+    "GGGGGGGggGGGGGGG", "GGGGGGGggGGGGGGG", ".GGGGGGggGGGGGG.", ".GGGGGGggGGGGGG.",
+    "..GGGGGGGGGGGG..", "...GGGGGGGGGG...", "....GGGGGGGG....", ".....GGGGGG.....",
+    "......GGGG......", ".......GG.......", ".......bb.......", ".......bb......." },
+  // ICO_ORTIE
+  { ".......GG.......", "......GGGG......", ".....GgGGgG.....", "......GGGG......",
+    "..GG.gGGGGg.GG..", ".GGGGgGGGGgGGGG.", "..GGGGgGGgGGGG..", "...GGGGGGGGGG...",
+    "....GGgGGgGG....", ".....GGGGGG.....", "......gGGg......", ".......gg.......",
+    ".......gg.......", ".......bb.......", ".......bb.......", ".......bb......." },
+  // ICO_RONCE
+  { "................", ".........GG.....", "........GGGG....", ".....pp..GG.....",
+    "....pppp..B.....", "....pppp.B......", ".....pp.B.w.....", "....G...B.......",
+    "...GGG.wB.......", "....G..B........", "......wB........", ".....B.B.w......",
+    ".....B..B.......", "....wB...B......", "....B....B......", "................" },
+  // ICO_OSIER
+  { "..G..G..G..G....", "..t..t..t..t....", "..t..t..t..t....", "..t..t..t..t....",
+    "..t..t..t..t....", ".BBBBBBBBBBBB...", "..t..t..t..t....", "..t..t..t..t....",
+    "..t..t..t..t....", "..t..t..t..t....", "..t..t..t..t....", "..t..t..t..t....",
+    "..t..t..t..t....", ".BBBBBBBBBBBB...", "..t..t..t..t....", "..t..t..t..t...." },
+  // ICO_JONC
+  { ".......B........", "......BBB.......", "......BBB.......", "......BBB.......",
+    "......BBB.......", ".......G.....G..", ".......G....G...", "..G....G....G...",
+    "..G....G...G....", "...G...G...G....", "...G...G..G.....", "....G..G..G.....",
+    "....G..G.G......", ".....G.G.G......", ".....GGG........", "......G........." },
+  // ICO_GENET
+  { "..y.....y....y..", ".yyy...yyy..yyy.", "..y..G..y.G..y..", "...G.G...G.G....",
+    "...G..G..G.G....", "....G.G.G..G....", "....G.G.G.G.....", ".....GGGG.G.....",
+    ".....GGGGG......", "......GGG.......", "......GGG.......", ".......G........",
+    ".......G........", ".......G........", ".......b........", ".......b........" },
+  // ICO_RACINE
+  { "................", ".tt.............", "..ttt...........", "....ttt.........",
+    "......ttt.....tt", "........ttt.ttt.", ".........tttt...", "..........tt....",
+    ".....tt..ttt....", "....ttt.tt......", "...tt.ttt.......", "..tt.tt.........",
+    "..t.tt..........", "...tt...........", "..tt............", ".tt............." },
+  // ICO_CORDE
+  { "................", "....tttttttt....", "...tBtBtBtBtt...", "..tBt......tBt..",
+    ".tBt..tttt..tBt.", ".tBt.tBttBt.tBt.", ".tBt.tt..tt.tBt.", ".tBt.tBttBt.tBt.",
+    ".tBt..tttt..tBt.", "..tBt......tBt..", "...tBtBtBtBtt...", "....tttttttt....",
+    "......tt........", ".......tt.......", "........tt......", "................" }
+};
+
+// ---------- Plantes pour la corde ----------
+static const Plante P_TILLEUL = {"Tilleul", ICO_TILLEUL,
+  "Prendre le liber (ecorce interieure), le faire tremper, puis le tresser en cordelette."};
+static const Plante P_ORTIE = {"Ortie", ICO_ORTIE,
+  "Tiges seches : ecraser, separer les fibres, les rouler et les tordre en cordelette."};
+static const Plante P_RONCE = {"Ronce", ICO_RONCE,
+  "Effeuiller et retirer les epines (avec des gants !), puis tresser les brins."};
+static const Plante P_OSIER = {"Osier / saule", ICO_OSIER,
+  "Tiges souples : les tordre pour faire des liens solides et flexibles."};
+static const Plante P_JONC = {"Jonc / roseau", ICO_JONC,
+  "Tresser plusieurs tiges ensemble pour allonger et renforcer la corde."};
+static const Plante P_GENET = {"Genet d'Espagne", ICO_GENET,
+  "Tiges souples : les tordre ou les tresser pour faire des liens."};
+static const Plante P_EPICEA = {"Racines d'epicea", ICO_RACINE,
+  "Racines fines et souples : les deterrer, les fendre en deux, puis les tresser en lien solide."};
+static const Plante P_PIN = {"Racines de pin", ICO_RACINE,
+  "Racines fines et souples : les deterrer, les fendre en deux, puis les tresser en lien solide."};
+static const Plante P_ECHOUE = {"Cordes echouees", ICO_CORDE,
+  "Filets et cordes rejetes par la mer : les rincer, puis les defaire pour recuperer le fil."};
+
+static const Plante *const L_O_FORET[] = {&P_TILLEUL, &P_ORTIE, &P_RONCE, &P_OSIER};
+static const Plante *const L_O_LITTORAL[] = {&P_ECHOUE, &P_ORTIE, &P_RONCE};
+static const Plante *const L_O_PLAINE[] = {&P_ORTIE, &P_RONCE, &P_OSIER};
+static const Plante *const L_EAU[] = {&P_JONC, &P_OSIER};
+static const Plante *const L_C_FORET[] = {&P_TILLEUL, &P_ORTIE, &P_EPICEA, &P_OSIER};
+static const Plante *const L_C_PLAINE[] = {&P_ORTIE, &P_RONCE, &P_OSIER};
+static const Plante *const L_M_FORET[] = {&P_GENET, &P_RONCE, &P_PIN};
+static const Plante *const L_M_LITTORAL[] = {&P_JONC, &P_GENET};
+static const Plante *const L_M_PLAINE[] = {&P_GENET, &P_RONCE};
+static const Plante *const L_MONTAGNE[] = {&P_EPICEA, &P_TILLEUL, &P_GENET};
+
+#define LISTE(a) { a, (uint8_t)(sizeof(a) / sizeof((a)[0])) }
+
+// [zone][habitat : foret, littoral, plaine, eau douce]
+static const ListePlantes cordes[3][4] = {
+  { LISTE(L_O_FORET), LISTE(L_O_LITTORAL), LISTE(L_O_PLAINE), LISTE(L_EAU) },
+  { LISTE(L_C_FORET), {NULL, 0},           LISTE(L_C_PLAINE), LISTE(L_EAU) },
+  { LISTE(L_M_FORET), LISTE(L_M_LITTORAL), LISTE(L_M_PLAINE), LISTE(L_EAU) }
+};
+static const ListePlantes cordes_montagne = LISTE(L_MONTAGNE);
+
+// Retourne la liste des plantes pour la corde, ou NULL s'il n'y en a pas
+static const ListePlantes *survie_cordes(int dept, Habitat h) {
+  if (h == HAB_MONTAGNE) return &cordes_montagne;
+  if (dept < 1 || dept > 95 || h < 0 || h > HAB_EAU_DOUCE) return NULL;
+  const ListePlantes *l = &cordes[dept_zone[dept]][h];
+  return l->n ? l : NULL;
 }
 
-static void text(const char *s, int x, int y, bool big, eadk_color_t c, eadk_color_t bg) {
-  eadk_point_t p = {x, y};
-  eadk_display_draw_string(s, p, big, c, bg);
-}
-
-static int para(const char *s, int x, int y, int max, eadk_color_t c, eadk_color_t bg) {
-  char line[48];
-  int n = 0;
-  while (*s) {
-    int w = 0;
-    while (s[w] && s[w] != ' ') w++;
-    if (n > 0 && n + 1 + w > max) {
-      line[n] = 0;
-      text(line, x, y, false, c, bg);
-      y += 16;
-      n = 0;
-    }
-    if (n > 0) line[n++] = ' ';
-    for (int i = 0; i < w && n < 46; i++) line[n++] = s[i];
-    s += w;
-    while (*s == ' ') s++;
+// ---------- Acces ----------
+static const Fiche *survie_fiche(int dept, Habitat h) {
+  if (h == HAB_MONTAGNE) return &fiche_montagne;
+  if (dept < 1 || dept > 95 || h < 0 || h > HAB_EAU_DOUCE) return NULL;
+  switch (dept_zone[dept]) {
+    case ZONE_OCEANIQUE:     return &fiches_oceanique[h];
+    case ZONE_CONTINENTAL:   return &fiches_continental[h];
+    default:                 return &fiches_mediterraneen[h];
   }
-  if (n) {
-    line[n] = 0;
-    text(line, x, y, false, c, bg);
-    y += 16;
-  }
-  return y;
 }
 
-/* ---------- Clavier ---------- */
-
-// 0-9 : chiffres, 10 : OK, 11 : retour/effacer, 12 haut, 13 bas, 14 gauche, 15 droite
-static int get_key(void) {
-  while (eadk_keyboard_scan()) eadk_timing_msleep(20);
-  while (1) {
-    eadk_keyboard_state_t k = eadk_keyboard_scan();
-#define K(x) eadk_keyboard_key_down(k, eadk_key_##x)
-    if (K(zero)) return 0;
-    if (K(one)) return 1;
-    if (K(two)) return 2;
-    if (K(three)) return 3;
-    if (K(four)) return 4;
-    if (K(five)) return 5;
-    if (K(six)) return 6;
-    if (K(seven)) return 7;
-    if (K(eight)) return 8;
-    if (K(nine)) return 9;
-    if (K(ok) || K(exe)) return 10;
-    if (K(back) || K(backspace)) return 11;
-    if (K(up)) return 12;
-    if (K(down)) return 13;
-    if (K(left)) return 14;
-    if (K(right)) return 15;
-#undef K
-    eadk_timing_msleep(20);
-  }
-}
-
-/* ---------- Icones ---------- */
-
-static eadk_color_t pal(char ch) {
-  switch (ch) {
-    case 'G': return RGB(60, 170, 60);
-    case 'g': return RGB(30, 110, 40);
-    case 'b': return RGB(130, 85, 40);
-    case 'B': return RGB(90, 55, 30);
-    case 't': return RGB(210, 180, 110);
-    case 'p': return RGB(110, 40, 120);
-    case 'w': return RGB(230, 230, 230);
-    case 'y': return RGB(255, 220, 50);
-  }
-  return DARK;
-}
-
-static void draw_icone(int id, int ox, int oy, int sc) {
-  fill(ox - 2, oy - 2, 16 * sc + 4, 16 * sc + 4, GRAY);
-  fill(ox, oy, 16 * sc, 16 * sc, RGB(25, 35, 55));
-  for (int r = 0; r < 16; r++) {
-    for (int q = 0; q < 16; q++) {
-      char ch = icone_pixels[id][r][q];
-      if (ch != '.') fill(ox + q * sc, oy + r * sc, sc, sc, pal(ch));
-    }
-  }
-}
-
-/* ---------- Ecrans ---------- */
-
-static void draw_dept(int len, int val) {
-  char b[4] = "__";
-  if (len == 1) {
-    b[0] = '0' + val;
-  } else if (len == 2) {
-    b[0] = '0' + val / 10;
-    b[1] = '0' + val % 10;
-  }
-  b[2] = 0;
-
-  fill(0, 0, 320, 240, DARK);
-  text("GUIDE DE SURVIE", 80, 16, true, YELLOW, DARK);
-  text("Numero du departement :", 10, 70, false, WHITE, DARK);
-  text(b, 135, 98, true, LIME, DARK);
-  if (len == 2) {
-    if (val >= 1 && val <= 95) {
-      text("Zone :", 10, 150, false, WHITE, DARK);
-      text(zone_noms[dept_zone[val]], 70, 150, false, YELLOW, DARK);
-    } else {
-      text("Numero invalide (01 a 95)", 10, 150, false, RED, DARK);
-    }
-  }
-  text("Ex : 05 ou 29. Corse = 20", 10, 185, false, GRAY, DARK);
-  text("[OK] valider    [Retour] effacer", 20, 214, false, GRAY, DARK);
-}
-
-static void draw_menu(int dept, int sel) {
-  char h[] = "Departement XX";
-  h[12] = '0' + dept / 10;
-  h[13] = '0' + dept % 10;
-  fill(0, 0, 320, 240, DARK);
-  text(h, 10, 8, false, YELLOW, DARK);
-  text(zone_noms[dept_zone[dept]], 10, 26, false, WHITE, DARK);
-  for (int i = 0; i < 6; i++) {
-    int y = 56 + i * 26;
-    eadk_color_t bg = (i == sel) ? SELECT : DARK;
-    fill(8, y - 3, 304, 22, bg);
-    text(i < 5 ? habitat_noms[i] : "Regles de base", 16, y, false,
-         (i == sel) ? YELLOW : WHITE, bg);
-  }
-  text("Haut/Bas choisir  [OK] ouvrir", 30, 218, false, GRAY, DARK);
-}
-
-static void draw_fiche(int dept, int hab, int sec, int psel) {
-  const Fiche *f = survie_fiche(dept, (Habitat)hab);
-  char d[] = "Dept XX";
-  d[5] = '0' + dept / 10;
-  d[6] = '0' + dept % 10;
-
-  fill(0, 0, 320, 240, DARK);
-  text(habitat_noms[hab], 10, 8, true, YELLOW, DARK);
-  text(d, 250, 12, false, GRAY, DARK);
-  if (hab != HAB_MONTAGNE) text(zone_noms[dept_zone[dept]], 10, 34, false, WHITE, DARK);
-
-  if (f == NULL) {
-    para("Fiche indisponible.", 10, 80, 40, WHITE, DARK);
-  } else if (f->corde[0] == '-' && f->corde[1] == 0) {
-    para(f->astuce, 10, 80, 40, WHITE, DARK);
-  } else {
-    const char *tabs[4] = {"Corde", "Manger", "Eau", "Astuce"};
-    const char *body[4] = {f->corde, f->manger, f->eau, f->astuce};
-    for (int t = 0; t < 4; t++) {
-      int x = 6 + t * 78;
-      eadk_color_t bg = (t == sec) ? YELLOW : TAB;
-      fill(x, 54, 74, 20, bg);
-      text(tabs[t], x + 8, 58, false, (t == sec) ? BLACK : WHITE, bg);
-    }
-    const ListePlantes *lp = (sec == 0) ? survie_cordes(dept, (Habitat)hab) : NULL;
-    if (lp) {
-      for (int i = 0; i < lp->n; i++) {
-        int y = 82 + i * 20;
-        eadk_color_t bg = (i == psel) ? SELECT : DARK;
-        fill(8, y - 2, 196, 18, bg);
-        text(lp->p[i]->nom, 14, y, false, (i == psel) ? YELLOW : WHITE, bg);
-      }
-      draw_icone(lp->p[psel]->icone, 220, 80, 5);
-      para(lp->p[psel]->methode, 10, 168, 40, WHITE, DARK);
-    } else {
-      para(body[sec], 10, 88, 40, WHITE, DARK);
-    }
-  }
-  if (sec == 0 && survie_cordes(dept, (Habitat)hab))
-    text("Haut/Bas plante  Gauche/Droite onglet", 8, 224, false, GRAY, DARK);
-  else
-    text("Gauche/Droite onglet  [Retour] menu", 8, 224, false, GRAY, DARK);
-}
-
-static void draw_regle(int r) {
-  char n[] = "Regle X/6";
-  n[6] = '1' + r;
-  fill(0, 0, 320, 240, DARK);
-  text("REGLES DE BASE", 80, 12, true, YELLOW, DARK);
-  text(n, 10, 50, false, LIME, DARK);
-  para(survie_regles[r], 10, 80, 40, WHITE, DARK);
-  text("Gauche/Droite changer  [Retour] menu", 8, 218, false, GRAY, DARK);
-}
-
-/* ---------- Programme ---------- */
-
-int main(int argc, char *argv[]) {
-  int screen = 0;  // 0 departement, 1 menu, 2 fiche, 3 regles
-  int len = 0, val = 0;
-  int dept = 0, sel = 0, hab = 0, sec = 0, ridx = 0, psel = 0;
-
-  while (1) {
-    if (screen == 0) draw_dept(len, val);
-    else if (screen == 1) draw_menu(dept, sel);
-    else if (screen == 2) draw_fiche(dept, hab, sec, psel);
-    else draw_regle(ridx);
-
-    int k = get_key();
-
-    if (screen == 0) {
-      if (k <= 9 && len < 2) {
-        val = val * 10 + k;
-        len++;
-      } else if (k == 11 && len > 0) {
-        val /= 10;
-        len--;
-      } else if (k == 10 && len == 2 && val >= 1 && val <= 95) {
-        dept = val;
-        sel = 0;
-        screen = 1;
-      }
-    } else if (screen == 1) {
-      if (k == 12) sel = (sel + 5) % 6;
-      else if (k == 13) sel = (sel + 1) % 6;
-      else if (k == 10) {
-        if (sel == 5) {
-          ridx = 0;
-          screen = 3;
-        } else {
-          hab = sel;
-          sec = 0;
-          psel = 0;
-          screen = 2;
-        }
-      } else if (k == 11) {
-        screen = 0;
-      }
-    } else if (screen == 2) {
-      const ListePlantes *lp = (sec == 0) ? survie_cordes(dept, (Habitat)hab) : NULL;
-      if (k == 12 && lp) psel = (psel + lp->n - 1) % lp->n;
-      else if (k == 13 && lp) psel = (psel + 1) % lp->n;
-      else if (k == 14) { sec = (sec + 3) % 4; psel = 0; }
-      else if (k == 15 || k == 10) { sec = (sec + 1) % 4; psel = 0; }
-      else if (k == 11) screen = 1;
-    } else {
-      if (k == 14) ridx = (ridx + NB_REGLES - 1) % NB_REGLES;
-      else if (k == 15 || k == 10) ridx = (ridx + 1) % NB_REGLES;
-      else if (k == 11) screen = 1;
-    }
-  }
-  return 0;
-}
+#endif
